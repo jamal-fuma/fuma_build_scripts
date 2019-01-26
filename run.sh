@@ -33,19 +33,24 @@ print_cwd()
 configure_project()
 {
     platform=${1:-"linux"}
+    tarname="$(cat ${PROJECT_ROOT}/project/NAME)-$(cat ${PROJECT_ROOT}/project/VERSION).tar.gz"
 
-    print_cwd;
+    # safely create tmpdir see https://www.netmeister.org/blog/mktemp.html
+    current_umask=$(umask)
+    umask 077
+    tmp_dname=$(mktemp -d)
+
 
     # make a toplevel directory which is ignored by git
     rm -rvf ${PROJECT_ROOT}/build   || die "Removing Staging build directory failed with: $!";
-    mkdir ${PROJECT_ROOT}/build     || die "Creating Staging build directory failed with: $!";
-    ./autogen.sh                    || die "Generating Staging build-system on ramdisk failed with: $!";
+    ln -sv ${tmp_dname} ${PROJECT_ROOT}/build     || die "Linking Staging build directory failed with: $!";
+    ( cd ${PROJECT_ROOT} && ./autogen.sh ) || die "Generating Staging build-system on ramdisk failed with: $!";
 
     cd ${PROJECT_ROOT}/build        || die "Entering Staging build directory on ramdisk failed with: $!";
     print_cwd;
     ${PROJECT_ROOT}/scripts/configure.sh ${platform} || die "Configuring project failed with: $!";
     if [ "$1" = "clang" ]; then
-            bear make check -j8;
+        bear make check -j8;
     elif [ "$1" = "clang-analyse" ]; then
         scan-build \
             -analyze-headers \
@@ -59,7 +64,20 @@ configure_project()
     else
         make ctags cscope
         make check -j8
+        make distcheck
+        make clean
+        make distclean
+        ${PROJECT_ROOT}/scripts/reallyclean.sh
+        mv ${tmp_dname}/${tarname} ${PROJECT_ROOT}/${tarname}
+        rm ${PROJECT_ROOT}/build
+        mkdir ${PROJECT_ROOT}/build
+        mv ${tmp_dname}/${tarname} ${PROJECT_ROOT}/build/${tarname}
+        rm -rvf ${tmp_dname}
     fi
+
+    # restore umask
+    umask ${current_umask}
+
 }
 
 # Optionally do work in a ramdisk
