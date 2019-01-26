@@ -40,18 +40,26 @@ configure_project()
     umask 077
     tmp_dname=$(mktemp -d)
 
-
-    # make a toplevel directory which is ignored by git
-    rm -rvf ${PROJECT_ROOT}/build   || die "Removing Staging build directory failed with: $!";
-    ln -sv ${tmp_dname} ${PROJECT_ROOT}/build     || die "Linking Staging build directory failed with: $!";
+    # bootstrap autotools
     ( cd ${PROJECT_ROOT} && ./autogen.sh ) || die "Generating Staging build-system on ramdisk failed with: $!";
+    case "$platform" in linux|osx|bsd|centos)
+        cd ${tmp_dname}                                  || die "Entering Staging build directory on ramdisk failed with: $!";
+        ${PROJECT_ROOT}/scripts/configure.sh ${platform} || die "Configuring project with platform='${platform}' failed with: $!";
+        make distcheck                                   || die "Distribution checking failed with: $!";
 
-    cd ${PROJECT_ROOT}/build        || die "Entering Staging build directory on ramdisk failed with: $!";
-    print_cwd;
-    ${PROJECT_ROOT}/scripts/configure.sh ${platform} || die "Configuring project failed with: $!";
-    if [ "$1" = "clang" ]; then
+        mkdir ${PROJECT_ROOT}/build
+        mv ${tmp_dname}/${tarname} ${PROJECT_ROOT}/build/${tarname}
+        cd ${PROJECT_ROOT}
+        rm -rvf ${tmp_dname}
+        ;;
+    bear)
+        cd ${tmp_dname}                            || die "Entering Staging build directory on ramdisk failed with: $!";
+        ${PROJECT_ROOT}/scripts/configure.sh clang || die "Configuring project with platform='${platform}' failed with: $!";
         bear make check -j8;
-    elif [ "$1" = "clang-analyse" ]; then
+        ;;
+    clang-analyse)
+        cd ${tmp_dname}                                  || die "Entering Staging build directory on ramdisk failed with: $!";
+        ${PROJECT_ROOT}/scripts/configure.sh ${platform} || die "Configuring project with platform='${platform}' failed with: $!";
         scan-build \
             -analyze-headers \
             -k \
@@ -59,37 +67,15 @@ configure_project()
             -enable-checker cplusplus \
             -enable-checker deadcode \
             -enable-checker security \
-            -enable-checker unix \
-            make check -j8
-    else
-        make ctags cscope
-        make check -j8
-        make distcheck
-        make clean
-        make distclean
-        ${PROJECT_ROOT}/scripts/reallyclean.sh
-        mv ${tmp_dname}/${tarname} ${PROJECT_ROOT}/${tarname}
-        rm ${PROJECT_ROOT}/build
-        mkdir ${PROJECT_ROOT}/build
-        mv ${tmp_dname}/${tarname} ${PROJECT_ROOT}/build/${tarname}
-        rm -rvf ${tmp_dname}
-    fi
+            -enable-checker unix
+        ;;
+    *)
+        exec ${PROJECT_ROOT}/scripts/run.sh linux
+    esac
 
     # restore umask
     umask ${current_umask}
 
+
 }
-
-# Optionally do work in a ramdisk
-if [ -e /Volumes/RAM\ Disk ]; then
-    # delete anything that shouldn't be there
-    if [ "$1" = "RAMDISK" ] ; then
-        rm -rvf /Volumes/RAM\ Disk/* || die "Removing trash from ramdisk failed with: $!";
-
-        # Overwrite the input argument as we only take this branch on osx
-        configure_project "osx"
-        exit $!
-    fi
-fi
-
 configure_project "${1}"
