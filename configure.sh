@@ -56,8 +56,9 @@ then
                 --enable-debug \
                 --with-ccache=yes \
                 --enable-silent-rules \
+		--with-webtoolkit=yes \
 		--with-webtoolkit-include-dir=/usr/local/include \
-                --with-webtoolkit-library-dir=/usr/local/lib
+		--with-webtoolkit-library-dir=/usr/local/lib
 fi
 
 if [ "${1}" = "profile" ];
