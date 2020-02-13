@@ -26,6 +26,6 @@ function to_clone_cmd(u,p){
 END{
     to_clone_cmd(url,path);
 }' $1 | while read line; do
-    sh -xec "echo $line";
+    sh -xec "eval $line";
 done;
 
